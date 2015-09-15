@@ -82,10 +82,11 @@ class Index(Resource):
     
     def get(self):
         return {
-            'user_url': 'http://%s:%s/user{/user_id}' % (request.remote_addr, app.config['PORT']),
+            'user_url': 'http://%s:%s/user/:user_id' % (request.remote_addr, app.config['PORT']),
             'scope_url': 'http://%s:%s/scope' % (request.remote_addr, app.config['PORT']),
             'token_url': 'http://%s:%s/token' % (request.remote_addr, app.config['PORT']),
-            'hbc_url': 'http://%s:%s/hbc/：date/:hphm/:kkdd' % (request.remote_addr, app.config['PORT'])
+            'hbcimg_url': 'http://%s:%s/hbc/:date/:hphm/:kkdd' % (request.remote_addr, app.config['PORT']),
+            'hbc_url': 'http://%s:%s/hbc/:jgsj/:hphm/:kkdd' % (request.remote_addr, app.config['PORT'])
         }, 200, {'Cache-Control': 'public, max-age=60, s-maxage=60'}
 
 
@@ -110,7 +111,6 @@ class User(Resource):
     @verify_scope
     def put(self, user_id):
         parser = reqparse.RequestParser()
-
         parser.add_argument('scope', type=unicode, required=True,
                             help='A scope field is require', location='json')
         args = parser.parse_args()
@@ -245,7 +245,7 @@ class HbcImg(Resource):
     decorators = [limiter.limit("2400/minute")]
 
     @verify_addr
-    #@verify_token
+    @verify_token
     def get(self, date, hphm, kkdd):
         try:
             hbc = Hbc.query.filter(Hbc.date==date, Hbc.hphm==hphm,
@@ -265,7 +265,7 @@ class HbcApi(Resource):
     decorators = [limiter.limit("2400/minute"), verify_addr]
 
     @verify_addr
-    #@verify_token
+    @verify_token
     def get(self, jgsj, hphm, kkdd):
         try:
             hbc = Hbc.query.filter(Hbc.date==jgsj[:10], Hbc.hphm==hphm,
@@ -284,7 +284,7 @@ class HbcList(Resource):
     decorators = [limiter.limit("600/minute")]
 
     @verify_addr
-    #@verify_token
+    @verify_token
     def post(self):
         parser = reqparse.RequestParser()
         parser.add_argument('jgsj', type=unicode, required=True,
@@ -304,20 +304,22 @@ class HbcList(Resource):
         parser.add_argument('imgpath', type=unicode,
                             help='A imgurl field is require', location='json')
         args = parser.parse_args()
-
-        t = arrow.get(request.json['jgsj']).replace(hours=-8).to('local')
-        hbc = Hbc(date=t.format('YYYY-MM-DD'),
-                  jgsj=t.datetime,
-                  hphm=request.json['hphm'],
-                  kkdd_id=request.json['kkdd_id'],
-                  hpys_id=request.json['hpys_id'],
-                  fxbh_id=request.json['fxbh_id'],
-                  cdbh=request.json['cdbh'],
-                  imgurl=request.json['imgurl'],
-                  imgpath=request.json.get('imgpath', ''),
-                  banned=0)
-        db.session.add(hbc)
-        db.session.commit()
+        try:
+            t = arrow.get(request.json['jgsj']).replace(hours=-8).to('local')
+            hbc = Hbc(date=t.format('YYYY-MM-DD'),
+                      jgsj=t.datetime,
+                      hphm=request.json['hphm'],
+                      kkdd_id=request.json['kkdd_id'],
+                      hpys_id=request.json['hpys_id'],
+                      fxbh_id=request.json['fxbh_id'],
+                      cdbh=request.json['cdbh'],
+                      imgurl=request.json['imgurl'],
+                      imgpath=request.json.get('imgpath', ''),
+                      banned=0)
+            db.session.add(hbc)
+            db.session.commit()
+        except Exception as e:
+            logger.error(e)
 
         result = row2dict(hbc)
         result['jgsj'] = str(result['jgsj'])
