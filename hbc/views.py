@@ -8,7 +8,7 @@ from passlib.hash import sha256_crypt
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 
 from app import db, app, api, auth, limiter, cache, logger, access_logger
-from models import Hbc, Hpys
+from models import Users, Scope, Hbc, Hpys
 from help_func import *
 
 @app.after_request
@@ -25,7 +25,7 @@ def verify_addr(f):
     """IP地址白名单"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not app.config['WHITE_LIST_OPEN'] or request.remote_addr in app.config['WHITE_LIST']:
+        if not app.config['WHITE_LIST_OPEN'] or request.remote_addr == '127.0.0.1' or request.remote_addr in app.config['WHITE_LIST']:
             pass
         else:
             return {'status': '403.6',
@@ -68,9 +68,8 @@ def verify_scope(f):
     def decorated_function(*args, **kwargs):
         try:
             scope = '_'.join([request.path[1:], request.method.lower()])
-            print scope
         except Exception as e:
-            print (e)
+            logger.error(e)
         if 'all' in g.scope or scope in g.scope:
             pass
         else:
@@ -110,7 +109,6 @@ class User(Resource):
     @verify_addr
     @verify_scope
     def put(self, user_id):
-        verify_scope('user_put')
         parser = reqparse.RequestParser()
 
         parser.add_argument('scope', type=unicode, required=True,
@@ -200,10 +198,11 @@ class ScopeList(Resource):
 
 
 def get_uid():
+    g.uid = -1
+    g.scope = ''
     try:
         user = Users.query.filter_by(username=request.json.get('username', ''),
                                      banned=0).first()
-        g.uid = -1
     except Exception as e:
         logger.error(e)
         raise
@@ -211,12 +210,14 @@ def get_uid():
         if sha256_crypt.verify(request.json.get('password', ''), user.password):
             g.uid = user.id
             g.scope = user.scope
-    return str(g.uid)
+            return str(g.uid)
+    return request.remote_addr
 
 
 class TokenList(Resource):
-    decorators = [limiter.limit("5/hour", get_uid), verify_addr]
+    decorators = [limiter.limit("5/hour", get_uid)]
 
+    @verify_addr
     def post(self):
         if not request.json.get('username', None):
             error = {'resource': 'Token', 'field': 'username',
@@ -240,31 +241,50 @@ class TokenList(Resource):
         }, 201, {'Cache-Control': 'no-store', 'Pragma': 'no-cache'}
 
 
-class HbcApi(Resource):
-    decorators = [limiter.limit("600/minute"), verify_addr]
+class HbcImg(Resource):
+    decorators = [limiter.limit("2400/minute")]
 
-    @verify_token
+    @verify_addr
+    #@verify_token
     def get(self, date, hphm, kkdd):
         try:
             hbc = Hbc.query.filter(Hbc.date==date, Hbc.hphm==hphm,
                                    Hbc.kkdd_id.startswith(kkdd),
-                                   Hbc.imgpath != '').all()
+                                   Hbc.imgpath != '').first()
         except Exception as e:
             logger.error(e)
 
-        items = []
-        for i in hbc:
-            items.append({'id': i.id, 'jgsj': str(i.jgsj), 'hphm': i.hphm,
-                          'kkdd_id': i.kkdd_id, 'imgpath': i.imgpath})
+        if hbc:
+            return {'id': hbc.id, 'jgsj': str(hbc.jgsj), 'hphm': hbc.hphm,
+                    'kkdd_id': hbc.kkdd_id, 'imgpath': hbc.imgpath}, 200
+        else:
+            return {}, 200
 
-        return {'total_count': len(items), 'items': items}, 200
-        
-        
+
+class HbcApi(Resource):
+    decorators = [limiter.limit("2400/minute"), verify_addr]
+
+    @verify_addr
+    #@verify_token
+    def get(self, jgsj, hphm, kkdd):
+        try:
+            hbc = Hbc.query.filter(Hbc.date==jgsj[:10], Hbc.hphm==hphm,
+                                   Hbc.jgsj==jgsj, Hbc.kkdd_id==kkdd).first()
+        except Exception as e:
+            logger.error(e)
+
+        if hbc:
+            return {'id': hbc.id, 'jgsj': str(hbc.jgsj), 'hphm': hbc.hphm,
+                    'kkdd_id': hbc.kkdd_id, 'imgpath': hbc.imgpath}, 200
+        else:
+            return {}, 200
+
         
 class HbcList(Resource):
-    decorators = [limiter.limit("600/minute"), verify_addr]
+    decorators = [limiter.limit("600/minute")]
 
-    @verify_token
+    @verify_addr
+    #@verify_token
     def post(self):
         parser = reqparse.RequestParser()
         parser.add_argument('jgsj', type=unicode, required=True,
@@ -306,7 +326,12 @@ class HbcList(Resource):
 
 
 api.add_resource(Index, '/')
-api.add_resource(HbcApi, '/hbc/<string:date>/<string:hphm>/<string:kkdd>')
+api.add_resource(User, '/user/<int:user_id>')
+api.add_resource(UserList, '/user')
+api.add_resource(ScopeList, '/scope')
+api.add_resource(TokenList, '/token')
+api.add_resource(HbcImg, '/hbcimg/<string:date>/<string:hphm>/<string:kkdd>')
+api.add_resource(HbcApi, '/hbc/<string:jgsj>/<string:hphm>/<string:kkdd>')
 api.add_resource(HbcList, '/hbc')
 
 
