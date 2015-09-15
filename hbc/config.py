@@ -13,12 +13,12 @@ class Config(object):
     # 加密次数 int
     ROUNDS = 123456
     # token生存周期，默认1小时 int
-    EXPIRES = 3600
+    EXPIRES = 7200
     # 数据库连接 string
     SQLALCHEMY_DATABASE_URI = 'sqlite:///../hbc.db'
     # 数据库连接 dict
     SQLALCHEMY_BINDS = {
-        'hz_hbc': 'mysql://root:root@localhost/hz_hbc',
+        'hz_hbc': 'mysql://root:123456@192.168.1.29/hz_hbc',
     }
     # 用户权限范围 dict
     SCOPE_USER = {}
