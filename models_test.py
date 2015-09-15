@@ -2,9 +2,18 @@
 import arrow
 
 from hbc import db
-from hbc.models import Hpys, Hbc
+from hbc.models import Hpys, Hbc, Users, Scope
 
+def scope_get():
+    scope = Scope.query.all()
+    for i in scope:
+        print i.name
 
+def user_get():
+    user = Users.query.filter_by(username='admin', banned=0).first()
+    print user.scope
+
+    
 def hpys_test():
     hpys = Hpys.query.all()
     print hpys
@@ -24,4 +33,6 @@ def hbc_add():
 
 if __name__ == '__main__':
     #hpys_test()
-    hbc_add()
+    #hbc_add()
+    scope_get()
+    user_get()
